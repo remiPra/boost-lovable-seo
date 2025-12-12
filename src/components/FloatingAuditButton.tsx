@@ -90,7 +90,7 @@ const FloatingAuditButton = () => {
         message: `URL du site: ${formData.url?.trim() || "Non renseigné"}\n\n` + `${formData.message}`,
       };
 
-      const res = await fetch("/api/send-email", {
+      const res = await fetch("https://www.monica-mariage-next/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
