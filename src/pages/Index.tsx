@@ -1,13 +1,35 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { Helmet } from "react-helmet-async";
+import { Layout } from "@/components/layout/Layout";
+import { Hero } from "@/components/sections/Hero";
+import { Problems } from "@/components/sections/Problems";
+import { Target } from "@/components/sections/Target";
+import { Method } from "@/components/sections/Method";
+import { OffersPreview } from "@/components/sections/OffersPreview";
+import { Testimonials } from "@/components/sections/Testimonials";
+import { CTA } from "@/components/sections/CTA";
 
 const Index = () => {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
-    </div>
+    <>
+      <Helmet>
+        <title>SEO Lovable - Rendez votre site Lovable visible sur Google</title>
+        <meta 
+          name="description" 
+          content="Spécialiste SEO pour sites Lovable. Audit gratuit, optimisation complète et accompagnement pour améliorer votre visibilité sur Google. Sans jargon technique." 
+        />
+        <link rel="canonical" href="https://seo-lovable.fr" />
+      </Helmet>
+      
+      <Layout>
+        <Hero />
+        <Problems />
+        <Target />
+        <Method />
+        <OffersPreview />
+        <Testimonials />
+        <CTA />
+      </Layout>
+    </>
   );
 };
 
