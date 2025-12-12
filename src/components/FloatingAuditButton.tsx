@@ -1,28 +1,35 @@
-import { useState } from "react";
-import { MessageCircle, X, Send } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { MessageCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+
+type FormData = {
+  message: string;
+  prenom: string;
+  email: string;
+  url: string;
+  // honeypot
+  website: string;
+};
 
 const FloatingAuditButton = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const { toast } = useToast();
 
-  const [formData, setFormData] = useState({
+  // Timer anti-bot (formTime)
+  const startTime = useMemo(() => Date.now(), []);
+
+  const [formData, setFormData] = useState<FormData>({
     message: "",
     prenom: "",
     email: "",
     url: "",
+    website: "", // honeypot
   });
 
   const [errors, setErrors] = useState({
@@ -31,11 +38,19 @@ const FloatingAuditButton = () => {
     email: false,
   });
 
+  // Reset timer-like behavior when opening modal (optionnel mais mieux)
+  // Ici on garde startTime fixe par mount ; si tu veux reset au moment de l’ouverture :
+  // (je te laisse ce petit + :)
+  const [openedAt, setOpenedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (isOpen) setOpenedAt(Date.now());
+  }, [isOpen]);
+
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const newErrors = {
@@ -50,37 +65,75 @@ const FloatingAuditButton = () => {
       return;
     }
 
-    const subject = encodeURIComponent("Demande audit SEO – site Lovable");
-    const body = encodeURIComponent(
-      `Prénom: ${formData.prenom}\n` +
-      `Email: ${formData.email}\n` +
-      `URL du site: ${formData.url || "Non renseigné"}\n\n` +
-      `Message:\n${formData.message}`
-    );
-
-    window.location.href = `mailto:remiletarologue@gmail.com?subject=${subject}&body=${body}`;
+    // Honeypot: si rempli => bot
+    if (formData.website && formData.website.trim() !== "") {
+      toast({
+        title: "Erreur",
+        description: "Spam détecté. Réessayez.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsSubmitted(true);
-    
-    setTimeout(() => {
-      setIsOpen(false);
+
+    try {
+      const computedFormTime = Date.now() - (openedAt ?? startTime); // si modal ouverte => temps depuis ouverture, sinon depuis mount
+
+      const payload = {
+        project: "audit-lovable",
+        prenom: formData.prenom,
+        email: formData.email,
+        telephone: "", // optionnel côté backend
+        website: formData.website, // doit rester vide
+        formTime: computedFormTime,
+        message: `URL du site: ${formData.url?.trim() || "Non renseigné"}\n\n` + `${formData.message}`,
+      };
+
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // si la réponse n'est pas JSON
+      }
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Erreur API");
+      }
+
       toast({
         title: "Merci !",
-        description: "Votre message a bien été envoyé. Réponse sous 24h.",
+        description: "Votre demande a bien été envoyée. Réponse sous 24h.",
       });
-      
-      // Reset form after closing
-      setTimeout(() => {
-        setFormData({ message: "", prenom: "", email: "", url: "" });
-        setIsSubmitted(false);
-      }, 300);
-    }, 500);
+
+      // Reset form + fermeture
+      setFormData({ message: "", prenom: "", email: "", url: "", website: "" });
+      setIsOpen(false);
+    } catch (err: any) {
+      toast({
+        title: "Erreur",
+        description: err?.message || "Impossible d’envoyer la demande. Réessayez.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitted(false);
+    }
   };
 
-  const handleChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    if (errors[field as keyof typeof errors]) {
-      setErrors(prev => ({ ...prev, [field]: false }));
+  const handleChange = (field: keyof FormData, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+
+    if (field in errors) {
+      const key = field as keyof typeof errors;
+      if (errors[key]) {
+        setErrors((prev) => ({ ...prev, [key]: false }));
+      }
     }
   };
 
@@ -100,19 +153,30 @@ const FloatingAuditButton = () => {
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader className="text-left">
-            <DialogTitle className="text-xl font-bold text-foreground">
-              Audit SEO rapide – réponse sous 24h
-            </DialogTitle>
+            <DialogTitle className="text-xl font-bold text-foreground">Audit SEO rapide – réponse sous 24h</DialogTitle>
             <DialogDescription className="text-muted-foreground mt-2">
               Une seule question. Je vous réponds personnellement.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-5 mt-4">
+            {/* Honeypot invisible (anti-spam) */}
+            <div className="hidden" aria-hidden="true">
+              <Label htmlFor="website">Website</Label>
+              <Input
+                id="website"
+                type="text"
+                tabIndex={-1}
+                autoComplete="off"
+                value={formData.website}
+                onChange={(e) => handleChange("website", e.target.value)}
+              />
+            </div>
+
             {/* Message */}
             <div className="space-y-2">
               <Label htmlFor="message" className="text-sm font-medium">
-                Quel est le principal problème de visibilité de votre site aujourd'hui ?
+                Quel est le principal problème de visibilité de votre site aujourd&apos;hui ?
                 <span className="text-destructive ml-1">*</span>
               </Label>
               <Textarea
@@ -124,9 +188,7 @@ const FloatingAuditButton = () => {
                 aria-required="true"
                 aria-invalid={errors.message}
               />
-              {errors.message && (
-                <p className="text-sm text-destructive">Ce champ est requis</p>
-              )}
+              {errors.message && <p className="text-sm text-destructive">Ce champ est requis</p>}
             </div>
 
             {/* Prénom */}
@@ -144,9 +206,7 @@ const FloatingAuditButton = () => {
                 aria-required="true"
                 aria-invalid={errors.prenom}
               />
-              {errors.prenom && (
-                <p className="text-sm text-destructive">Ce champ est requis</p>
-              )}
+              {errors.prenom && <p className="text-sm text-destructive">Ce champ est requis</p>}
             </div>
 
             {/* Email */}
@@ -164,9 +224,7 @@ const FloatingAuditButton = () => {
                 aria-required="true"
                 aria-invalid={errors.email}
               />
-              {errors.email && (
-                <p className="text-sm text-destructive">Email invalide</p>
-              )}
+              {errors.email && <p className="text-sm text-destructive">Email invalide</p>}
             </div>
 
             {/* URL */}
@@ -184,11 +242,7 @@ const FloatingAuditButton = () => {
             </div>
 
             {/* Submit Button */}
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isSubmitted}
-            >
+            <Button type="submit" className="w-full" disabled={isSubmitted}>
               {isSubmitted ? (
                 "Envoi en cours..."
               ) : (
